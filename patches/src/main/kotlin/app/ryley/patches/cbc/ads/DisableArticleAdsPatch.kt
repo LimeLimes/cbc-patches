@@ -7,10 +7,15 @@ import app.ryley.patches.cbc.shared.Constants.COMPATIBILITY_CBC_NEWS
 /**
  * Removes the ads the app splices into article bodies.
  *
- * Article HTML (Polopoly CMS or GraphQL) is parsed and `[INSERTED_AD]` markers are inserted between
- * paragraphs whenever `InReadAdConfig.isAdsEnabled()` is true. Returning false from that getter
- * leaves the article markup untouched, so no in-article ad slot is ever created — this is the
- * article-view "web" ad surface, killed before any ad HTML exists.
+ * Three hooks, so the removal does not depend on a single remote-config value:
+ *
+ *  1. `InReadAdConfig.isAdsEnabled()` returns false — the config gate both insertion sites consult.
+ *  2. `PolopolyHandler.insertAd(String)` returns the CMS body untouched (no `[INSERTED_AD]` markers).
+ *  3. `GqlStoryParserStrategyImpl.insertAds(...)` returns the parsed body list untouched.
+ *
+ * (2) and (3) are the app's own no-ads paths — the same values the methods return when the config
+ * gate is already false — so behaviour stays identical for callers if CBC changes how the gate is
+ * read.
  */
 @Suppress("unused")
 val disableArticleAdsPatch = bytecodePatch(
@@ -28,5 +33,11 @@ val disableArticleAdsPatch = bytecodePatch(
                 return v0
             """,
         )
+
+        // Return the article body unchanged instead of interspersing ad markers.
+        PolopolyInsertAdFingerprint.method.addInstructions(0, "return-object v8")
+
+        // Return the parsed body list unchanged instead of inserting InsertedAd items.
+        GqlInsertAdsFingerprint.method.addInstructions(0, "return-object v7")
     }
 }
